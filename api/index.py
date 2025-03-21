@@ -45,8 +45,8 @@ def generate_random_number(hard_mode=False):
             # Addition/Subtraction (decimal places rule)
             num1 = random.uniform(0.1, 100)
             num2 = random.uniform(0.1, 100)
-            decimal_places1 = random.randint(1, 4)
-            decimal_places2 = random.randint(1, 4)
+            decimal_places1 = random.randint(1, 3)
+            decimal_places2 = random.randint(1, 3)
             num1_str = f"{num1:.{decimal_places1}f}"
             num2_str = f"{num2:.{decimal_places2}f}"
             operation = random.choice(['+', '-'])
@@ -63,8 +63,8 @@ def generate_random_number(hard_mode=False):
             
         elif calculation_type == 'multiply_divide':
             # Multiplication/Division (significant figures rule)
-            sig_figs1 = random.randint(2, 4)
-            sig_figs2 = random.randint(2, 4)
+            sig_figs1 = random.randint(2, 3)
+            sig_figs2 = random.randint(2, 3)
             
             # Generate numbers with specific sig figs
             num1 = random.uniform(1, 100)
@@ -86,13 +86,13 @@ def generate_random_number(hard_mode=False):
             
         elif calculation_type == 'mixed_operations':
             # Mixed operations
-            sig_figs1 = random.randint(2, 4)
-            sig_figs2 = random.randint(2, 4)
-            sig_figs3 = random.randint(2, 4)
+            sig_figs1 = random.randint(2, 3)
+            sig_figs2 = random.randint(2, 3)
+            sig_figs3 = random.randint(2, 3)
             
-            num1 = random.uniform(1, 100)
-            num2 = random.uniform(1, 100)
-            num3 = random.uniform(1, 100)
+            num1 = random.uniform(1, 50)
+            num2 = random.uniform(1, 50)
+            num3 = random.uniform(1, 50)
             
             num1_str = format_with_sig_figs(num1, sig_figs1)
             num2_str = format_with_sig_figs(num2, sig_figs2)
@@ -138,7 +138,7 @@ def generate_random_number(hard_mode=False):
                 
             elif sub_type == 'log':
                 num = random.uniform(1, 1000)
-                sig_figs = random.randint(2, 4)
+                sig_figs = random.randint(2, 3)
                 num_str = format_with_sig_figs(num, sig_figs)
                 
                 problem = {
@@ -151,7 +151,7 @@ def generate_random_number(hard_mode=False):
                 
             else:  # sqrt
                 num = random.uniform(1, 100)
-                sig_figs = random.randint(2, 4)
+                sig_figs = random.randint(2, 3)
                 num_str = format_with_sig_figs(num, sig_figs)
                 
                 problem = {
@@ -410,25 +410,53 @@ def count_sig_figs(number_str):
         # No decimal point (e.g., 12300)
         # Leading zeros are not significant
         number_str = number_str.lstrip('0')
+        if not number_str:  # If it was all zeros
+            return 1
         # Trailing zeros are not significant without a decimal
         return len(number_str.rstrip('0'))
-
-def check_sig_figs_in_user_answer(user_answer, required_sig_figs):
-    """Check if the user's answer has the correct number of significant figures"""
-    user_sig_figs = count_sig_figs(user_answer)
-    return user_sig_figs == required_sig_figs
 
 def is_answer_numerically_correct(user_answer, exact_result, tolerance=1e-3):
     """Check if the user's answer is numerically correct within tolerance"""
     try:
+        # Clean the user answer to handle various input formats
+        user_answer = user_answer.strip().lower()
+        
+        # Remove commas and other formatting
+        user_answer = user_answer.replace(',', '')
+        
+        # Try to convert to float
         user_value = float(user_answer)
+        
+        # For exact matches, don't use tolerance
+        if user_answer == format_with_sig_figs(exact_result, count_sig_figs(user_answer)):
+            return True
+        
+        # For very small numbers, use absolute tolerance
+        if abs(exact_result) < 1e-10:
+            return abs(user_value - exact_result) <= tolerance
+        
         # Calculate relative error
-        if exact_result != 0:
-            rel_error = abs((user_value - exact_result) / exact_result)
-        else:
-            rel_error = abs(user_value - exact_result)
+        rel_error = abs((user_value - exact_result) / exact_result)
         
         return rel_error <= tolerance
+    except:
+        return False
+
+def check_sig_figs_in_user_answer(user_answer, required_sig_figs):
+    """Check if the user's answer has the correct number of significant figures"""
+    try:
+        # Clean and normalize the input
+        user_answer = user_answer.strip().lower()
+        user_answer = user_answer.replace(',', '')
+        
+        # Make sure it's a valid number before counting sig figs
+        try:
+            float(user_answer)
+        except:
+            return False
+            
+        user_sig_figs = count_sig_figs(user_answer)
+        return user_sig_figs == required_sig_figs
     except:
         return False
 
@@ -460,7 +488,7 @@ def explain_sig_figs(problem, user_answer, result_info):
         if number_str.startswith('0.'):
             zero_count = 0
             for char in number_str[2:]:
-                if char == '0':
+                if digit == '0':
                     zero_count += 1
                 else:
                     break
@@ -491,12 +519,13 @@ def explain_sig_figs(problem, user_answer, result_info):
             
         explanation = ""
         
+        # BUG FIX: Don't say the calculation is incorrect if it's actually correct
         if not is_numerically_correct:
             explanation += f"Your calculation appears to be incorrect. The expected result is approximately {formatted_result}. "
-        
-        if not has_correct_sig_figs:
+        elif not has_correct_sig_figs:
+            # The calculation is correct but sig figs are wrong
             user_sig_figs = count_sig_figs(user_answer)
-            explanation += f"Your answer has {user_sig_figs} significant figures, but it should have {correct_sig_figs}. "
+            explanation += f"Your calculation is numerically correct, but you have {user_sig_figs} significant figures when you should have {correct_sig_figs}. "
             
             operation = problem['operation']
             
@@ -530,18 +559,19 @@ def explain_sig_figs(problem, user_answer, result_info):
                 explanation += f"In this problem, the base has {base_sf} significant figures, so the result should also have {base_sf} significant figures. "
             
             elif operation == 'log':
-                explanation += "For logarithms, the number of decimal places in the result equals the number of significant figures in the original number. "
+                explanation += "For logarithms, the number of significant figures in the result equals the number of significant figures in the original number. "
                 num = problem['num']
                 num_sf = count_sig_figs(num)
-                explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures in the mantissa. "
+                explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
             
             elif operation == 'sqrt':
                 explanation += "When taking a square root, the result should have the same number of significant figures as the original number. "
                 num = problem['num']
                 num_sf = count_sig_figs(num)
                 explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
-            
-        explanation += f"The correctly formatted answer is {formatted_result}."
+        
+        if not is_numerically_correct or not has_correct_sig_figs:
+            explanation += f"The correctly formatted answer is {formatted_result}."
         
         return explanation
 
@@ -912,17 +942,16 @@ def check():
     if isinstance(problem, dict):
         # This is a calculation problem
         result_info = calculate_result_and_sig_figs(problem)
-        correct = False
         
         if hard_mode:
-            # Check both numerical accuracy and sig figs
+            # For hard mode with calculations, check both numerical accuracy and sig figs
             exact_result = result_info['exact']
             correct_sig_figs = result_info['sig_figs']
             
             numerically_correct = is_answer_numerically_correct(user_answer, exact_result)
-            correct_sig_figs = check_sig_figs_in_user_answer(user_answer, correct_sig_figs)
+            has_correct_sig_figs = check_sig_figs_in_user_answer(user_answer, correct_sig_figs)
             
-            correct = numerically_correct and correct_sig_figs
+            correct = numerically_correct and has_correct_sig_figs
         else:
             # Just check if they counted the sig figs correctly
             try:
@@ -933,7 +962,7 @@ def check():
                 
         explanation = explain_sig_figs(problem, user_answer, result_info)
     else:
-        # This is a simple number
+        # This is a simple number counting problem
         correct_answer = count_sig_figs(problem)
         
         if hard_mode:
