@@ -173,8 +173,13 @@ def format_with_sig_figs(number, sig_figs):
     magnitude = math.floor(math.log10(abs(number)))
     
     if magnitude >= sig_figs - 1:
-        # Large number, use scientific notation
-        return f"{number:.{sig_figs-1}e}"
+        # Large number, use standard notation
+        if magnitude < 5:  # Keep using standard notation for reasonable numbers
+            # For numbers like 1200, 34000, etc.
+            return f"{round(number, -magnitude+(sig_figs-1)):.0f}"
+        else:
+            # Use scientific notation for very large numbers
+            return f"{number:.{sig_figs-1}e}"
     elif magnitude >= 0:
         # Medium number
         return f"{number:.{sig_figs-1-magnitude}f}"
@@ -206,7 +211,13 @@ def calculate_result_and_sig_figs(problem):
         # Format result with correct decimal places
         formatted_result = f"{result:.{min_dp}f}"
         
-        return formatted_result, count_sig_figs(formatted_result)
+        # Store both the exact value and the formatted result
+        return {
+            'exact': result,
+            'formatted': formatted_result,
+            'required_dp': min_dp,
+            'sig_figs': count_sig_figs(formatted_result)
+        }
     
     elif problem['operation'] == 'multiply_divide':
         num1 = float(problem['num1'])
@@ -227,7 +238,12 @@ def calculate_result_and_sig_figs(problem):
         # Format result with correct sig figs
         formatted_result = format_with_sig_figs(result, min_sf)
         
-        return formatted_result, min_sf
+        return {
+            'exact': result,
+            'formatted': formatted_result,
+            'required_sf': min_sf,
+            'sig_figs': min_sf
+        }
     
     elif problem['operation'] == 'mixed':
         num1 = float(problem['num1'])
@@ -284,8 +300,14 @@ def calculate_result_and_sig_figs(problem):
             min_dp = min(dp1, dp_intermediate)
             
             formatted_result = f"{final_result:.{min_dp}f}"
-            
-        return formatted_result, count_sig_figs(formatted_result)
+        
+        final_sf = count_sig_figs(formatted_result)
+        
+        return {
+            'exact': final_result,
+            'formatted': formatted_result,
+            'sig_figs': final_sf
+        }
     
     elif problem['operation'] == 'power':
         base = float(problem['base'])
@@ -297,7 +319,12 @@ def calculate_result_and_sig_figs(problem):
         base_sf = count_sig_figs(problem['base'])
         formatted_result = format_with_sig_figs(result, base_sf)
         
-        return formatted_result, base_sf
+        return {
+            'exact': result,
+            'formatted': formatted_result,
+            'required_sf': base_sf,
+            'sig_figs': base_sf
+        }
     
     elif problem['operation'] == 'log':
         num = float(problem['num'])
@@ -310,9 +337,14 @@ def calculate_result_and_sig_figs(problem):
         
         # Format with appropriate decimal places
         formatted_result = f"{result:.{num_sf}f}"
+        result_sf = count_sig_figs(formatted_result)
         
-        # The integer part + decimal places equals the sig figs in the result
-        return formatted_result, count_sig_figs(formatted_result)
+        return {
+            'exact': result,
+            'formatted': formatted_result,
+            'required_sf': num_sf,
+            'sig_figs': result_sf
+        }
     
     elif problem['operation'] == 'sqrt':
         num = float(problem['num'])
@@ -323,7 +355,12 @@ def calculate_result_and_sig_figs(problem):
         num_sf = count_sig_figs(problem['num'])
         formatted_result = format_with_sig_figs(result, num_sf)
         
-        return formatted_result, num_sf
+        return {
+            'exact': result,
+            'formatted': formatted_result,
+            'required_sf': num_sf,
+            'sig_figs': num_sf
+        }
         
     return None, None
 
@@ -337,7 +374,7 @@ def count_sig_figs(number_str):
     number_str = str(number_str).strip().lower()
     
     # Special case for zero
-    if float(number_str) == 0:
+    if number_str == '0' or float(number_str) == 0:
         return 1
     
     # Handle scientific notation
@@ -376,13 +413,35 @@ def count_sig_figs(number_str):
         # Trailing zeros are not significant without a decimal
         return len(number_str.rstrip('0'))
 
-def explain_sig_figs(problem, user_answer, correct_answer):
+def check_sig_figs_in_user_answer(user_answer, required_sig_figs):
+    """Check if the user's answer has the correct number of significant figures"""
+    user_sig_figs = count_sig_figs(user_answer)
+    return user_sig_figs == required_sig_figs
+
+def is_answer_numerically_correct(user_answer, exact_result, tolerance=1e-3):
+    """Check if the user's answer is numerically correct within tolerance"""
+    try:
+        user_value = float(user_answer)
+        # Calculate relative error
+        if exact_result != 0:
+            rel_error = abs((user_value - exact_result) / exact_result)
+        else:
+            rel_error = abs(user_value - exact_result)
+        
+        return rel_error <= tolerance
+    except:
+        return False
+
+def explain_sig_figs(problem, user_answer, result_info):
     """Explain why the user's answer is incorrect"""
-    if user_answer == correct_answer:
-        return "Correct! Good job."
-    
-    # For a simple number
+    # For simple counting problems
     if not isinstance(problem, dict):
+        correct_sig_figs = count_sig_figs(problem)
+        user_sig_figs = int(user_answer) if user_answer.isdigit() else count_sig_figs(user_answer)
+        
+        if user_sig_figs == correct_sig_figs:
+            return "Correct! Good job."
+            
         explanation = ""
         number_str = problem
         
@@ -411,57 +470,78 @@ def explain_sig_figs(problem, user_answer, correct_answer):
         if number_str.replace('.', '').strip('0') == '':
             explanation += "For zero, we generally consider it to have 1 significant figure. "
         
-        explanation += f"The correct answer is {correct_answer} significant figures."
+        explanation += f"The correct answer is {correct_sig_figs} significant figures."
         
         return explanation
     
     # For calculation problems
     else:
+        exact_result = result_info['exact']
+        formatted_result = result_info['formatted']
+        correct_sig_figs = result_info['sig_figs']
+        
+        # First check if the number is numerically close enough
+        is_numerically_correct = is_answer_numerically_correct(user_answer, exact_result)
+        
+        # Then check if it has the right sig figs
+        has_correct_sig_figs = check_sig_figs_in_user_answer(user_answer, correct_sig_figs)
+        
+        if is_numerically_correct and has_correct_sig_figs:
+            return "Correct! Your calculated value and significant figures are both accurate."
+            
         explanation = ""
-        operation = problem['operation']
         
-        if operation == 'add_subtract':
-            explanation += "For addition and subtraction, the result should have the same number of DECIMAL PLACES as the term with the fewest decimal places. "
-            num1 = problem['num1']
-            num2 = problem['num2']
-            dp1 = len(num1.split('.')[-1]) if '.' in num1 else 0
-            dp2 = len(num2.split('.')[-1]) if '.' in num2 else 0
-            min_dp = min(dp1, dp2)
-            explanation += f"In this problem, the first number has {dp1} decimal places and the second has {dp2}. The result should have {min_dp} decimal places. "
+        if not is_numerically_correct:
+            explanation += f"Your calculation appears to be incorrect. The expected result is approximately {formatted_result}. "
         
-        elif operation == 'multiply_divide':
-            explanation += "For multiplication and division, the result should have the same number of SIGNIFICANT FIGURES as the term with the fewest significant figures. "
-            num1 = problem['num1']
-            num2 = problem['num2']
-            sf1 = count_sig_figs(num1)
-            sf2 = count_sig_figs(num2)
-            min_sf = min(sf1, sf2)
-            explanation += f"In this problem, the first number has {sf1} significant figures and the second has {sf2}. The result should have {min_sf} significant figures. "
-        
-        elif operation == 'mixed':
-            explanation += "For mixed operations, we need to apply the rules of significant figures sequentially based on the operations involved. "
-            explanation += "First calculate using the order of operations (PEMDAS), then apply the appropriate sig fig rules at each step. "
-            explanation += "For multiplication/division, limit to the fewest sig figs in the factors. For addition/subtraction, limit to the fewest decimal places. "
-        
-        elif operation == 'power':
-            explanation += "When raising a number to a power, the result should have the same number of significant figures as the base number. "
-            base = problem['base']
-            base_sf = count_sig_figs(base)
-            explanation += f"In this problem, the base has {base_sf} significant figures, so the result should also have {base_sf} significant figures. "
-        
-        elif operation == 'log':
-            explanation += "For logarithms, the number of significant figures in the mantissa (decimal part) of the result equals the number of significant figures in the original number. "
-            num = problem['num']
-            num_sf = count_sig_figs(num)
-            explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
-        
-        elif operation == 'sqrt':
-            explanation += "When taking a square root, the result should have the same number of significant figures as the original number. "
-            num = problem['num']
-            num_sf = count_sig_figs(num)
-            explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
-        
-        explanation += f"The correct answer is {correct_answer} significant figures."
+        if not has_correct_sig_figs:
+            user_sig_figs = count_sig_figs(user_answer)
+            explanation += f"Your answer has {user_sig_figs} significant figures, but it should have {correct_sig_figs}. "
+            
+            operation = problem['operation']
+            
+            if operation == 'add_subtract':
+                explanation += "For addition and subtraction, the result should have the same number of DECIMAL PLACES as the term with the fewest decimal places. "
+                num1 = problem['num1']
+                num2 = problem['num2']
+                dp1 = len(num1.split('.')[-1]) if '.' in num1 else 0
+                dp2 = len(num2.split('.')[-1]) if '.' in num2 else 0
+                min_dp = min(dp1, dp2)
+                explanation += f"In this problem, the first number has {dp1} decimal places and the second has {dp2}. The result should have {min_dp} decimal places. "
+            
+            elif operation == 'multiply_divide':
+                explanation += "For multiplication and division, the result should have the same number of SIGNIFICANT FIGURES as the term with the fewest significant figures. "
+                num1 = problem['num1']
+                num2 = problem['num2']
+                sf1 = count_sig_figs(num1)
+                sf2 = count_sig_figs(num2)
+                min_sf = min(sf1, sf2)
+                explanation += f"In this problem, the first number has {sf1} significant figures and the second has {sf2}. The result should have {min_sf} significant figures. "
+            
+            elif operation == 'mixed':
+                explanation += "For mixed operations, we need to apply the rules of significant figures sequentially based on the operations involved. "
+                explanation += "First calculate using the order of operations (PEMDAS), then apply the appropriate sig fig rules at each step. "
+                explanation += "For multiplication/division, limit to the fewest sig figs in the factors. For addition/subtraction, limit to the fewest decimal places. "
+            
+            elif operation == 'power':
+                explanation += "When raising a number to a power, the result should have the same number of significant figures as the base number. "
+                base = problem['base']
+                base_sf = count_sig_figs(base)
+                explanation += f"In this problem, the base has {base_sf} significant figures, so the result should also have {base_sf} significant figures. "
+            
+            elif operation == 'log':
+                explanation += "For logarithms, the number of decimal places in the result equals the number of significant figures in the original number. "
+                num = problem['num']
+                num_sf = count_sig_figs(num)
+                explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures in the mantissa. "
+            
+            elif operation == 'sqrt':
+                explanation += "When taking a square root, the result should have the same number of significant figures as the original number. "
+                num = problem['num']
+                num_sf = count_sig_figs(num)
+                explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
+            
+        explanation += f"The correctly formatted answer is {formatted_result}."
         
         return explanation
 
@@ -511,7 +591,7 @@ html_template = """
             margin-bottom: 5px;
             font-weight: bold;
         }
-        input[type="number"], button {
+        input, button {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
@@ -578,6 +658,24 @@ html_template = """
             text-align: center;
             color: #666;
         }
+        .help-text {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .rules-section {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .rules-heading {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .rules-list {
+            margin-left: 20px;
+        }
         @media (max-width: 600px) {
             body {
                 padding: 10px;
@@ -606,11 +704,11 @@ html_template = """
         <div id="problem">
             <p id="problem-instruction">How many significant figures are in this number?</p>
             <div class="number-display" id="number">--</div>
-            <div class="calculation-result hidden" id="calculation-result"></div>
             
             <div class="form-group">
-                <label for="user-answer">Your Answer:</label>
+                <label for="user-answer" id="answer-label">Your Answer:</label>
                 <input type="number" id="user-answer" min="0" step="1">
+                <div class="help-text" id="answer-help">Enter the number of significant figures.</div>
             </div>
             
             <button id="check-answer">Check Answer</button>
@@ -622,12 +720,27 @@ html_template = """
         <div class="stats">
             <p>Score: <span id="correct-count">0</span> / <span id="total-count">0</span></p>
         </div>
+        
+        <div class="rules-section">
+            <div class="rules-heading">Quick Reference: Significant Figures Rules</div>
+            <ul class="rules-list">
+                <li>All non-zero digits are significant (1, 2, 3, etc)</li>
+                <li>Zeros between non-zero digits are significant (102 has 3 sig figs)</li>
+                <li>Leading zeros are NEVER significant (0.00123 has 3 sig figs)</li>
+                <li>Trailing zeros after a decimal point ARE significant (1.200 has 4 sig figs)</li>
+                <li>Trailing zeros in a whole number are NOT significant unless indicated (1200 has 2 sig figs, but 1200. has 4)</li>
+                <li>For addition/subtraction: result has same decimal places as term with fewest decimal places</li>
+                <li>For multiplication/division: result has same significant figures as term with fewest sig figs</li>
+            </ul>
+        </div>
     </div>
     
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const numberDisplay = document.getElementById('number');
             const userAnswerInput = document.getElementById('user-answer');
+            const answerLabel = document.getElementById('answer-label');
+            const answerHelp = document.getElementById('answer-help');
             const checkAnswerButton = document.getElementById('check-answer');
             const newProblemButton = document.getElementById('new-problem');
             const resultDiv = document.getElementById('result');
@@ -636,10 +749,9 @@ html_template = """
             const totalCountSpan = document.getElementById('total-count');
             const modeDescriptionDiv = document.getElementById('mode-description');
             const problemInstructionP = document.getElementById('problem-instruction');
-            const calculationResultDiv = document.getElementById('calculation-result');
             
             let currentProblem = '';
-            let correctAnswer = 0;
+            let resultInfo = null;
             let correctCount = 0;
             let totalCount = 0;
             
@@ -649,11 +761,19 @@ html_template = """
             // Event listener for the hard mode toggle
             hardModeCheckbox.addEventListener('change', function() {
                 if (this.checked) {
-                    modeDescriptionDiv.textContent = "Hard Mode: Determine the number of significant figures in the result of calculations.";
-                    problemInstructionP.textContent = "How many significant figures should the result of this calculation have?";
+                    modeDescriptionDiv.textContent = "Hard Mode: Calculate the result with the correct number of significant figures.";
+                    problemInstructionP.textContent = "Calculate the following and report the answer with the correct significant figures:";
+                    answerLabel.textContent = "Your Calculated Answer:";
+                    answerHelp.textContent = "Enter your result using the correct significant figures.";
+                    userAnswerInput.type = "text";  // Allow any input including scientific notation
+                    userAnswerInput.step = "any";
                 } else {
                     modeDescriptionDiv.textContent = "Simple Mode: Count the significant figures in numbers.";
                     problemInstructionP.textContent = "How many significant figures are in this number?";
+                    answerLabel.textContent = "Your Answer:";
+                    answerHelp.textContent = "Enter the number of significant figures.";
+                    userAnswerInput.type = "number";
+                    userAnswerInput.step = "1";
                 }
                 generateNewProblem();
             });
@@ -688,22 +808,14 @@ html_template = """
                 .then(response => response.json())
                 .then(data => {
                     currentProblem = data.problem;
-                    correctAnswer = data.correct_answer;
+                    resultInfo = data.result_info;
                     
                     if (hardMode && typeof currentProblem === 'object') {
                         // This is a calculation problem
                         numberDisplay.textContent = currentProblem.problem;
-                        
-                        if (data.result) {
-                            calculationResultDiv.textContent = `The result of this calculation is: ${data.result}`;
-                            calculationResultDiv.classList.remove('hidden');
-                        } else {
-                            calculationResultDiv.classList.add('hidden');
-                        }
                     } else {
                         // This is a simple number
                         numberDisplay.textContent = currentProblem;
-                        calculationResultDiv.classList.add('hidden');
                     }
                     
                     userAnswerInput.value = '';
@@ -719,12 +831,14 @@ html_template = """
             }
             
             function checkAnswer() {
-                const userAnswer = parseInt(userAnswerInput.value, 10);
+                const userAnswer = userAnswerInput.value.trim();
                 
-                if (isNaN(userAnswer)) {
-                    alert('Please enter a valid number.');
+                if (!userAnswer) {
+                    alert('Please enter an answer.');
                     return;
                 }
+                
+                const isHardMode = hardModeCheckbox.checked;
                 
                 fetch('/check', {
                     method: 'POST',
@@ -733,7 +847,8 @@ html_template = """
                     },
                     body: JSON.stringify({
                         problem: currentProblem,
-                        user_answer: userAnswer
+                        user_answer: userAnswer,
+                        hard_mode: isHardMode
                     })
                 })
                 .then(response => response.json())
@@ -775,36 +890,68 @@ def generate():
     
     if isinstance(problem, dict):
         # This is a calculation problem
-        result, correct_answer = calculate_result_and_sig_figs(problem)
+        result_info = calculate_result_and_sig_figs(problem)
         return jsonify({
             'problem': problem,
-            'result': result,
-            'correct_answer': correct_answer
+            'result_info': result_info
         })
     else:
         # This is a simple number
         correct_answer = count_sig_figs(problem)
         return jsonify({
             'problem': problem,
-            'correct_answer': correct_answer
+            'result_info': {'sig_figs': correct_answer}
         })
 
 @app.route('/check', methods=['POST'])
 def check():
     problem = request.json.get('problem')
-    user_answer = int(request.json.get('user_answer'))
+    user_answer = request.json.get('user_answer')
+    hard_mode = request.json.get('hard_mode', False)
     
     if isinstance(problem, dict):
         # This is a calculation problem
-        _, correct_answer = calculate_result_and_sig_figs(problem)
+        result_info = calculate_result_and_sig_figs(problem)
+        correct = False
+        
+        if hard_mode:
+            # Check both numerical accuracy and sig figs
+            exact_result = result_info['exact']
+            correct_sig_figs = result_info['sig_figs']
+            
+            numerically_correct = is_answer_numerically_correct(user_answer, exact_result)
+            correct_sig_figs = check_sig_figs_in_user_answer(user_answer, correct_sig_figs)
+            
+            correct = numerically_correct and correct_sig_figs
+        else:
+            # Just check if they counted the sig figs correctly
+            try:
+                user_sig_figs = int(user_answer)
+                correct = user_sig_figs == result_info['sig_figs']
+            except:
+                correct = False
+                
+        explanation = explain_sig_figs(problem, user_answer, result_info)
     else:
         # This is a simple number
         correct_answer = count_sig_figs(problem)
         
-    explanation = explain_sig_figs(problem, user_answer, correct_answer)
-    
+        if hard_mode:
+            # They should have entered the calculated value
+            correct = False  # This shouldn't happen in simple mode + hard mode
+            explanation = "Error: Cannot use hard mode with simple problems."
+        else:
+            # They should have counted the sig figs
+            try:
+                user_answer_int = int(user_answer)
+                correct = user_answer_int == correct_answer
+            except:
+                correct = False
+                
+            explanation = explain_sig_figs(problem, user_answer, {'sig_figs': correct_answer})
+        
     return jsonify({
-        'correct': user_answer == correct_answer,
+        'correct': correct,
         'explanation': explanation
     })
 
