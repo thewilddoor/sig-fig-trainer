@@ -39,7 +39,7 @@ def generate_random_number(hard_mode=False):
                 return str(base) + '0' * zeros + str(random.randint(1, 9))
     else:
         # Hard mode - calculations with sig figs
-        calculation_type = random.choice(['add_subtract', 'multiply_divide', 'mixed_operations', 'power_log'])
+        calculation_type = random.choice(['add_subtract', 'multiply_divide', 'mixed_operations', 'power_sqrt'])
         
         if calculation_type == 'add_subtract':
             # Addition/Subtraction (decimal places rule)
@@ -117,9 +117,9 @@ def generate_random_number(hard_mode=False):
             }
             return problem
             
-        else:  # power_log
-            # Power or Logarithm
-            sub_type = random.choice(['power', 'log', 'sqrt'])
+        else:  # power_sqrt
+            # Power or Square Root
+            sub_type = random.choice(['power', 'sqrt'])
             
             if sub_type == 'power':
                 base = random.uniform(1, 10)
@@ -135,20 +135,6 @@ def generate_random_number(hard_mode=False):
                     'power': power
                 }
                 return problem
-                
-            elif sub_type == 'log':
-                num = random.uniform(1, 1000)
-                sig_figs = random.randint(2, 3)
-                num_str = format_with_sig_figs(num, sig_figs)
-                
-                problem = {
-                    'type': 'calculation',
-                    'operation': 'log',
-                    'problem': f"log({num_str})",
-                    'num': num_str
-                }
-                return problem
-                
             else:  # sqrt
                 num = random.uniform(1, 100)
                 sig_figs = random.randint(2, 3)
@@ -176,7 +162,10 @@ def format_with_sig_figs(number, sig_figs):
         # Large number, use standard notation
         if magnitude < 5:  # Keep using standard notation for reasonable numbers
             # For numbers like 1200, 34000, etc.
-            return f"{round(number, -magnitude+(sig_figs-1)):.0f}"
+            # Fix for proper rounding to sig figs for large numbers
+            scale = 10 ** magnitude
+            rounded = round(number / scale, sig_figs - 1) * scale
+            return f"{rounded:.0f}"
         else:
             # Use scientific notation for very large numbers
             return f"{number:.{sig_figs-1}e}"
@@ -326,26 +315,6 @@ def calculate_result_and_sig_figs(problem):
             'sig_figs': base_sf
         }
     
-    elif problem['operation'] == 'log':
-        num = float(problem['num'])
-        
-        result = math.log10(num)
-        
-        # For logarithms, the number of decimal places in the result equals
-        # the number of significant figures in the original number
-        num_sf = count_sig_figs(problem['num'])
-        
-        # Format with appropriate decimal places
-        formatted_result = f"{result:.{num_sf}f}"
-        result_sf = count_sig_figs(formatted_result)
-        
-        return {
-            'exact': result,
-            'formatted': formatted_result,
-            'required_sf': num_sf,
-            'sig_figs': result_sf
-        }
-    
     elif problem['operation'] == 'sqrt':
         num = float(problem['num'])
         
@@ -488,7 +457,7 @@ def explain_sig_figs(problem, user_answer, result_info):
         if number_str.startswith('0.'):
             zero_count = 0
             for char in number_str[2:]:
-                if digit == '0':
+                if char == '0':  # Fixed: was 'digit' which is undefined
                     zero_count += 1
                 else:
                     break
@@ -519,7 +488,7 @@ def explain_sig_figs(problem, user_answer, result_info):
             
         explanation = ""
         
-        # BUG FIX: Don't say the calculation is incorrect if it's actually correct
+        # Don't say the calculation is incorrect if it's actually correct
         if not is_numerically_correct:
             explanation += f"Your calculation appears to be incorrect. The expected result is approximately {formatted_result}. "
         elif not has_correct_sig_figs:
@@ -557,12 +526,6 @@ def explain_sig_figs(problem, user_answer, result_info):
                 base = problem['base']
                 base_sf = count_sig_figs(base)
                 explanation += f"In this problem, the base has {base_sf} significant figures, so the result should also have {base_sf} significant figures. "
-            
-            elif operation == 'log':
-                explanation += "For logarithms, the number of significant figures in the result equals the number of significant figures in the original number. "
-                num = problem['num']
-                num_sf = count_sig_figs(num)
-                explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
             
             elif operation == 'sqrt':
                 explanation += "When taking a square root, the result should have the same number of significant figures as the original number. "
