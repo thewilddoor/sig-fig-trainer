@@ -1,12 +1,13 @@
 from flask import Flask, render_template_string, request, jsonify
 import random
+import math
 
 app = Flask(__name__)
 
 def generate_random_number(hard_mode=False):
-    """Generate a random number for sig fig practice"""
+    """Generate a random number or calculation for sig fig practice"""
     if not hard_mode:
-        # Simple cases
+        # Simple mode - just counting sig figs in numbers
         types = ['regular', 'decimal', 'scientific', 'zeros']
         num_type = random.choice(types)
         
@@ -37,39 +38,301 @@ def generate_random_number(hard_mode=False):
             else:  # middle
                 return str(base) + '0' * zeros + str(random.randint(1, 9))
     else:
-        # Harder cases
-        types = ['ambiguous_zeros', 'mixed_notation', 'exact_numbers', 'complex_decimals']
-        num_type = random.choice(types)
+        # Hard mode - calculations with sig figs
+        calculation_type = random.choice(['add_subtract', 'multiply_divide', 'mixed_operations', 'power_log'])
         
-        if num_type == 'ambiguous_zeros':
-            # Numbers with ambiguous zeros: 1000, 0.0100, etc.
-            base = random.randint(1, 9)
-            zeros = random.randint(2, 5)
-            return str(base) + '0' * zeros
-        elif num_type == 'mixed_notation':
-            # Mixed notation: 1.20e3, 4.00e-2, etc.
-            mantissa_digits = random.randint(1, 3)
-            mantissa = random.random() * 9 + 1
-            trailing_zeros = random.randint(0, 2)
-            exponent = random.randint(-6, 6)
-            mantissa_str = f"{mantissa:.{mantissa_digits + trailing_zeros}f}"
-            return f"{mantissa_str}e{exponent}"
-        elif num_type == 'exact_numbers':
-            # Numbers that might be exact: 100, 1000, etc.
-            base = 10 ** random.randint(1, 4)
-            return str(base)
-        else:  # complex_decimals
-            # Complex decimals: 0.00120300, etc.
-            leading_zeros = random.randint(1, 3)
-            middle_digits = random.randint(1, 3)
-            trailing_zeros = random.randint(1, 3)
-            middle = random.randint(1, 10**middle_digits - 1)
-            return f"0.{'0' * leading_zeros}{middle}{'0' * trailing_zeros}"
+        if calculation_type == 'add_subtract':
+            # Addition/Subtraction (decimal places rule)
+            num1 = random.uniform(0.1, 100)
+            num2 = random.uniform(0.1, 100)
+            decimal_places1 = random.randint(1, 4)
+            decimal_places2 = random.randint(1, 4)
+            num1_str = f"{num1:.{decimal_places1}f}"
+            num2_str = f"{num2:.{decimal_places2}f}"
+            operation = random.choice(['+', '-'])
             
+            problem = {
+                'type': 'calculation',
+                'operation': 'add_subtract',
+                'problem': f"{num1_str} {operation} {num2_str}",
+                'num1': num1_str,
+                'num2': num2_str,
+                'op': operation
+            }
+            return problem
+            
+        elif calculation_type == 'multiply_divide':
+            # Multiplication/Division (significant figures rule)
+            sig_figs1 = random.randint(2, 4)
+            sig_figs2 = random.randint(2, 4)
+            
+            # Generate numbers with specific sig figs
+            num1 = random.uniform(1, 100)
+            num2 = random.uniform(1, 100)
+            num1_str = format_with_sig_figs(num1, sig_figs1)
+            num2_str = format_with_sig_figs(num2, sig_figs2)
+            
+            operation = random.choice(['×', '÷'])
+            
+            problem = {
+                'type': 'calculation',
+                'operation': 'multiply_divide',
+                'problem': f"{num1_str} {operation} {num2_str}",
+                'num1': num1_str,
+                'num2': num2_str,
+                'op': operation
+            }
+            return problem
+            
+        elif calculation_type == 'mixed_operations':
+            # Mixed operations
+            sig_figs1 = random.randint(2, 4)
+            sig_figs2 = random.randint(2, 4)
+            sig_figs3 = random.randint(2, 4)
+            
+            num1 = random.uniform(1, 100)
+            num2 = random.uniform(1, 100)
+            num3 = random.uniform(1, 100)
+            
+            num1_str = format_with_sig_figs(num1, sig_figs1)
+            num2_str = format_with_sig_figs(num2, sig_figs2)
+            num3_str = format_with_sig_figs(num3, sig_figs3)
+            
+            op_types = random.choice([
+                ('+', '×'),  # A + B × C
+                ('×', '+'),  # A × B + C
+                ('×', '÷'),  # A × B ÷ C
+                ('÷', '+')   # A ÷ B + C
+            ])
+            
+            problem = {
+                'type': 'calculation',
+                'operation': 'mixed',
+                'problem': f"{num1_str} {op_types[0]} {num2_str} {op_types[1]} {num3_str}",
+                'num1': num1_str,
+                'num2': num2_str,
+                'num3': num3_str,
+                'op1': op_types[0],
+                'op2': op_types[1]
+            }
+            return problem
+            
+        else:  # power_log
+            # Power or Logarithm
+            sub_type = random.choice(['power', 'log', 'sqrt'])
+            
+            if sub_type == 'power':
+                base = random.uniform(1, 10)
+                sig_figs = random.randint(2, 3)
+                power = random.randint(2, 3)
+                base_str = format_with_sig_figs(base, sig_figs)
+                
+                problem = {
+                    'type': 'calculation',
+                    'operation': 'power',
+                    'problem': f"{base_str}^{power}",
+                    'base': base_str,
+                    'power': power
+                }
+                return problem
+                
+            elif sub_type == 'log':
+                num = random.uniform(1, 1000)
+                sig_figs = random.randint(2, 4)
+                num_str = format_with_sig_figs(num, sig_figs)
+                
+                problem = {
+                    'type': 'calculation',
+                    'operation': 'log',
+                    'problem': f"log({num_str})",
+                    'num': num_str
+                }
+                return problem
+                
+            else:  # sqrt
+                num = random.uniform(1, 100)
+                sig_figs = random.randint(2, 4)
+                num_str = format_with_sig_figs(num, sig_figs)
+                
+                problem = {
+                    'type': 'calculation',
+                    'operation': 'sqrt',
+                    'problem': f"√{num_str}",
+                    'num': num_str
+                }
+                return problem
+                
     return "42"  # Default fallback
+
+def format_with_sig_figs(number, sig_figs):
+    """Format a number with a specific number of significant figures"""
+    if number == 0:
+        return "0" + "." + "0" * (sig_figs - 1) if sig_figs > 1 else "0"
+    
+    # Determine the format string based on the magnitude
+    magnitude = math.floor(math.log10(abs(number)))
+    
+    if magnitude >= sig_figs - 1:
+        # Large number, use scientific notation
+        return f"{number:.{sig_figs-1}e}"
+    elif magnitude >= 0:
+        # Medium number
+        return f"{number:.{sig_figs-1-magnitude}f}"
+    else:
+        # Small number
+        return f"{number:.{sig_figs+abs(magnitude)-1}f}"
+
+def calculate_result_and_sig_figs(problem):
+    """Calculate the result and determine correct significant figures"""
+    if problem['type'] != 'calculation':
+        return None, count_sig_figs(problem)
+    
+    if problem['operation'] == 'add_subtract':
+        num1 = float(problem['num1'])
+        num2 = float(problem['num2'])
+        op = problem['op']
+        
+        # Perform the calculation
+        if op == '+':
+            result = num1 + num2
+        else:  # '-'
+            result = num1 - num2
+            
+        # Determine decimal places
+        dp1 = len(problem['num1'].split('.')[-1]) if '.' in problem['num1'] else 0
+        dp2 = len(problem['num2'].split('.')[-1]) if '.' in problem['num2'] else 0
+        min_dp = min(dp1, dp2)
+        
+        # Format result with correct decimal places
+        formatted_result = f"{result:.{min_dp}f}"
+        
+        return formatted_result, count_sig_figs(formatted_result)
+    
+    elif problem['operation'] == 'multiply_divide':
+        num1 = float(problem['num1'])
+        num2 = float(problem['num2'])
+        op = problem['op']
+        
+        # Perform the calculation
+        if op == '×':
+            result = num1 * num2
+        else:  # '÷'
+            result = num1 / num2
+            
+        # Determine sig figs
+        sf1 = count_sig_figs(problem['num1'])
+        sf2 = count_sig_figs(problem['num2'])
+        min_sf = min(sf1, sf2)
+        
+        # Format result with correct sig figs
+        formatted_result = format_with_sig_figs(result, min_sf)
+        
+        return formatted_result, min_sf
+    
+    elif problem['operation'] == 'mixed':
+        num1 = float(problem['num1'])
+        num2 = float(problem['num2'])
+        num3 = float(problem['num3'])
+        op1 = problem['op1']
+        op2 = problem['op2']
+        
+        # Calculate based on operation precedence
+        if (op1 in ['×', '÷']) and (op2 in ['+', '-']):
+            # First calculate num1 op1 num2, then result op2 num3
+            if op1 == '×':
+                intermediate = num1 * num2
+            else:
+                intermediate = num1 / num2
+                
+            sf1 = count_sig_figs(problem['num1'])
+            sf2 = count_sig_figs(problem['num2'])
+            intermediate_sf = min(sf1, sf2)
+            
+            if op2 == '+':
+                final_result = intermediate + num3
+            else:
+                final_result = intermediate - num3
+                
+            # For addition/subtraction, we need to match decimal places
+            intermediate_str = format_with_sig_figs(intermediate, intermediate_sf)
+            dp_intermediate = len(intermediate_str.split('.')[-1]) if '.' in intermediate_str else 0
+            dp3 = len(problem['num3'].split('.')[-1]) if '.' in problem['num3'] else 0
+            min_dp = min(dp_intermediate, dp3)
+            
+            formatted_result = f"{final_result:.{min_dp}f}"
+            
+        else:  # (op1 in ['+', '-']) and (op2 in ['×', '÷'])
+            # First calculate num2 op2 num3, then num1 op1 result
+            if op2 == '×':
+                intermediate = num2 * num3
+            else:
+                intermediate = num2 / num3
+                
+            sf2 = count_sig_figs(problem['num2'])
+            sf3 = count_sig_figs(problem['num3'])
+            intermediate_sf = min(sf2, sf3)
+            
+            if op1 == '+':
+                final_result = num1 + intermediate
+            else:
+                final_result = num1 - intermediate
+                
+            # For addition/subtraction, we need to match decimal places
+            intermediate_str = format_with_sig_figs(intermediate, intermediate_sf)
+            dp1 = len(problem['num1'].split('.')[-1]) if '.' in problem['num1'] else 0
+            dp_intermediate = len(intermediate_str.split('.')[-1]) if '.' in intermediate_str else 0
+            min_dp = min(dp1, dp_intermediate)
+            
+            formatted_result = f"{final_result:.{min_dp}f}"
+            
+        return formatted_result, count_sig_figs(formatted_result)
+    
+    elif problem['operation'] == 'power':
+        base = float(problem['base'])
+        power = int(problem['power'])
+        
+        result = base ** power
+        
+        # In powers, the result has the same number of sig figs as the base
+        base_sf = count_sig_figs(problem['base'])
+        formatted_result = format_with_sig_figs(result, base_sf)
+        
+        return formatted_result, base_sf
+    
+    elif problem['operation'] == 'log':
+        num = float(problem['num'])
+        
+        result = math.log10(num)
+        
+        # For logarithms, the number of decimal places in the result equals
+        # the number of significant figures in the original number
+        num_sf = count_sig_figs(problem['num'])
+        
+        # Format with appropriate decimal places
+        formatted_result = f"{result:.{num_sf}f}"
+        
+        # The integer part + decimal places equals the sig figs in the result
+        return formatted_result, count_sig_figs(formatted_result)
+    
+    elif problem['operation'] == 'sqrt':
+        num = float(problem['num'])
+        
+        result = math.sqrt(num)
+        
+        # Square root has the same number of sig figs as the original number
+        num_sf = count_sig_figs(problem['num'])
+        formatted_result = format_with_sig_figs(result, num_sf)
+        
+        return formatted_result, num_sf
+        
+    return None, None
 
 def count_sig_figs(number_str):
     """Count significant figures following standard rules."""
+    if isinstance(number_str, dict):
+        # This is a calculation problem, not a simple number
+        return None
+        
     # Normalize input
     number_str = str(number_str).strip().lower()
     
@@ -113,41 +376,94 @@ def count_sig_figs(number_str):
         # Trailing zeros are not significant without a decimal
         return len(number_str.rstrip('0'))
 
-def explain_sig_figs(number_str, user_answer, correct_answer):
+def explain_sig_figs(problem, user_answer, correct_answer):
     """Explain why the user's answer is incorrect"""
     if user_answer == correct_answer:
         return "Correct! Good job."
+    
+    # For a simple number
+    if not isinstance(problem, dict):
+        explanation = ""
+        number_str = problem
         
-    explanation = ""
+        # Basic rules explanation
+        if 'e' in number_str.lower():
+            explanation += "In scientific notation, only the digits in the mantissa (the part before 'e') count for significant figures. "
+        
+        if '.' in number_str:
+            if float(number_str) < 1:
+                explanation += "For a decimal number less than 1, leading zeros are NOT significant. They only serve to locate the decimal point. "
+            explanation += "When there's a decimal point, ALL trailing zeros ARE significant. "
+        else:
+            explanation += "Without a decimal point, trailing zeros are NOT significant (they could just be placeholders). "
+        
+        # More specific explanations based on the number
+        if number_str.startswith('0.'):
+            zero_count = 0
+            for char in number_str[2:]:
+                if char == '0':
+                    zero_count += 1
+                else:
+                    break
+            if zero_count > 0:
+                explanation += f"The {zero_count} zero(s) after the decimal point but before the first non-zero digit are NOT significant. "
+        
+        if number_str.replace('.', '').strip('0') == '':
+            explanation += "For zero, we generally consider it to have 1 significant figure. "
+        
+        explanation += f"The correct answer is {correct_answer} significant figures."
+        
+        return explanation
     
-    # Basic rules explanation
-    if 'e' in number_str.lower():
-        explanation += "In scientific notation, only the digits in the mantissa (the part before 'e') count for significant figures. "
-    
-    if '.' in number_str:
-        if float(number_str) < 1:
-            explanation += "For a decimal number less than 1, leading zeros are NOT significant. They only serve to locate the decimal point. "
-        explanation += "When there's a decimal point, ALL trailing zeros ARE significant. "
+    # For calculation problems
     else:
-        explanation += "Without a decimal point, trailing zeros are NOT significant (they could just be placeholders). "
-    
-    # More specific explanations based on the number
-    if number_str.startswith('0.'):
-        zero_count = 0
-        for char in number_str[2:]:
-            if char == '0':
-                zero_count += 1
-            else:
-                break
-        if zero_count > 0:
-            explanation += f"The {zero_count} zero(s) after the decimal point but before the first non-zero digit are NOT significant. "
-    
-    if number_str.replace('.', '').strip('0') == '':
-        explanation += "For zero, we generally consider it to have 1 significant figure. "
-    
-    explanation += f"The correct answer is {correct_answer} significant figures."
-    
-    return explanation
+        explanation = ""
+        operation = problem['operation']
+        
+        if operation == 'add_subtract':
+            explanation += "For addition and subtraction, the result should have the same number of DECIMAL PLACES as the term with the fewest decimal places. "
+            num1 = problem['num1']
+            num2 = problem['num2']
+            dp1 = len(num1.split('.')[-1]) if '.' in num1 else 0
+            dp2 = len(num2.split('.')[-1]) if '.' in num2 else 0
+            min_dp = min(dp1, dp2)
+            explanation += f"In this problem, the first number has {dp1} decimal places and the second has {dp2}. The result should have {min_dp} decimal places. "
+        
+        elif operation == 'multiply_divide':
+            explanation += "For multiplication and division, the result should have the same number of SIGNIFICANT FIGURES as the term with the fewest significant figures. "
+            num1 = problem['num1']
+            num2 = problem['num2']
+            sf1 = count_sig_figs(num1)
+            sf2 = count_sig_figs(num2)
+            min_sf = min(sf1, sf2)
+            explanation += f"In this problem, the first number has {sf1} significant figures and the second has {sf2}. The result should have {min_sf} significant figures. "
+        
+        elif operation == 'mixed':
+            explanation += "For mixed operations, we need to apply the rules of significant figures sequentially based on the operations involved. "
+            explanation += "First calculate using the order of operations (PEMDAS), then apply the appropriate sig fig rules at each step. "
+            explanation += "For multiplication/division, limit to the fewest sig figs in the factors. For addition/subtraction, limit to the fewest decimal places. "
+        
+        elif operation == 'power':
+            explanation += "When raising a number to a power, the result should have the same number of significant figures as the base number. "
+            base = problem['base']
+            base_sf = count_sig_figs(base)
+            explanation += f"In this problem, the base has {base_sf} significant figures, so the result should also have {base_sf} significant figures. "
+        
+        elif operation == 'log':
+            explanation += "For logarithms, the number of significant figures in the mantissa (decimal part) of the result equals the number of significant figures in the original number. "
+            num = problem['num']
+            num_sf = count_sig_figs(num)
+            explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
+        
+        elif operation == 'sqrt':
+            explanation += "When taking a square root, the result should have the same number of significant figures as the original number. "
+            num = problem['num']
+            num_sf = count_sig_figs(num)
+            explanation += f"In this problem, the number has {num_sf} significant figures, so the result should have {num_sf} significant figures. "
+        
+        explanation += f"The correct answer is {correct_answer} significant figures."
+        
+        return explanation
 
 # HTML template
 html_template = """
@@ -250,6 +566,18 @@ html_template = """
         .hidden {
             display: none;
         }
+        .mode-description {
+            text-align: center;
+            margin-bottom: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .calculation-result {
+            font-size: 1.1rem;
+            margin-top: 10px;
+            text-align: center;
+            color: #666;
+        }
         @media (max-width: 600px) {
             body {
                 padding: 10px;
@@ -267,13 +595,18 @@ html_template = """
         <div class="mode-toggle">
             <div class="toggle-label">
                 <input type="checkbox" id="hard-mode">
-                <span>Hard Mode</span>
+                <span>Hard Mode (Calculations)</span>
             </div>
         </div>
         
+        <div class="mode-description" id="mode-description">
+            Simple Mode: Count the significant figures in numbers.
+        </div>
+        
         <div id="problem">
-            <p>How many significant figures are in this number?</p>
+            <p id="problem-instruction">How many significant figures are in this number?</p>
             <div class="number-display" id="number">--</div>
+            <div class="calculation-result hidden" id="calculation-result"></div>
             
             <div class="form-group">
                 <label for="user-answer">Your Answer:</label>
@@ -301,14 +634,29 @@ html_template = """
             const hardModeCheckbox = document.getElementById('hard-mode');
             const correctCountSpan = document.getElementById('correct-count');
             const totalCountSpan = document.getElementById('total-count');
+            const modeDescriptionDiv = document.getElementById('mode-description');
+            const problemInstructionP = document.getElementById('problem-instruction');
+            const calculationResultDiv = document.getElementById('calculation-result');
             
-            let currentNumber = '';
+            let currentProblem = '';
             let correctAnswer = 0;
             let correctCount = 0;
             let totalCount = 0;
             
             // Generate a new problem when the page loads
             generateNewProblem();
+            
+            // Event listener for the hard mode toggle
+            hardModeCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    modeDescriptionDiv.textContent = "Hard Mode: Determine the number of significant figures in the result of calculations.";
+                    problemInstructionP.textContent = "How many significant figures should the result of this calculation have?";
+                } else {
+                    modeDescriptionDiv.textContent = "Simple Mode: Count the significant figures in numbers.";
+                    problemInstructionP.textContent = "How many significant figures are in this number?";
+                }
+                generateNewProblem();
+            });
             
             // Event listener for the "Check Answer" button
             checkAnswerButton.addEventListener('click', function() {
@@ -339,10 +687,25 @@ html_template = """
                 })
                 .then(response => response.json())
                 .then(data => {
-                    currentNumber = data.number;
+                    currentProblem = data.problem;
                     correctAnswer = data.correct_answer;
                     
-                    numberDisplay.textContent = currentNumber;
+                    if (hardMode && typeof currentProblem === 'object') {
+                        // This is a calculation problem
+                        numberDisplay.textContent = currentProblem.problem;
+                        
+                        if (data.result) {
+                            calculationResultDiv.textContent = `The result of this calculation is: ${data.result}`;
+                            calculationResultDiv.classList.remove('hidden');
+                        } else {
+                            calculationResultDiv.classList.add('hidden');
+                        }
+                    } else {
+                        // This is a simple number
+                        numberDisplay.textContent = currentProblem;
+                        calculationResultDiv.classList.add('hidden');
+                    }
+                    
                     userAnswerInput.value = '';
                     resultDiv.classList.add('hidden');
                     
@@ -369,7 +732,7 @@ html_template = """
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        number: currentNumber,
+                        problem: currentProblem,
                         user_answer: userAnswer
                     })
                 })
@@ -408,24 +771,42 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate():
     hard_mode = request.json.get('hard_mode', False)
-    number = generate_random_number(hard_mode)
-    correct_answer = count_sig_figs(number)
-    return jsonify({
-        'number': number,
-        'correct_answer': correct_answer
-    })
+    problem = generate_random_number(hard_mode)
+    
+    if isinstance(problem, dict):
+        # This is a calculation problem
+        result, correct_answer = calculate_result_and_sig_figs(problem)
+        return jsonify({
+            'problem': problem,
+            'result': result,
+            'correct_answer': correct_answer
+        })
+    else:
+        # This is a simple number
+        correct_answer = count_sig_figs(problem)
+        return jsonify({
+            'problem': problem,
+            'correct_answer': correct_answer
+        })
 
 @app.route('/check', methods=['POST'])
 def check():
-    number = request.json.get('number')
+    problem = request.json.get('problem')
     user_answer = int(request.json.get('user_answer'))
-    correct_answer = count_sig_figs(number)
-    explanation = explain_sig_figs(number, user_answer, correct_answer)
+    
+    if isinstance(problem, dict):
+        # This is a calculation problem
+        _, correct_answer = calculate_result_and_sig_figs(problem)
+    else:
+        # This is a simple number
+        correct_answer = count_sig_figs(problem)
+        
+    explanation = explain_sig_figs(problem, user_answer, correct_answer)
+    
     return jsonify({
         'correct': user_answer == correct_answer,
         'explanation': explanation
     })
 
-# This avoids running the app when imported
 # For Vercel deployment
 app = app
